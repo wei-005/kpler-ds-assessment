@@ -1,0 +1,23 @@
+
+# Kpler DS — Refactored notebooks & utils (Task‑A focus)
+
+## What's inside
+- `notebooks/01_...` to `06_...`: end‑to‑end flow; bilingual comments (`# 中文` then `# English`).
+- `utils/`: small library the notebooks import:
+  - `config.py`: path config helpers
+  - `etl_clean.py`: cleaning + Task‑A samples builder (keeps `is_load/is_discharge`, `prev_dist_km`, `last_leg_knots_est`, `product_family_dom`)
+  - `splits.py`: temporal split + crisis flag
+  - `candidates.py`: transitions, global MF, history/geo candidates
+  - `features.py`: port attributes, port degree, sample features, merge
+  - `metrics.py`: hits@K/MRR, candidate recall
+
+## How to use
+1. Place this folder at your project root (or unzip it there).
+2. Set data paths in **notebooks/01** (or via env vars `KPLER_DATA_DIR`, `KPLER_INTERIM_DIR`, `KPLER_PROCESSED_DIR`).
+3. Run notebooks in order 01 → 06.
+
+## Notes
+- We focused on **Task A (very next destination)** per assignment.
+- `product_family_dom` is included via trades when building samples in 01.
+- Port network centrality is simplified to **in/out degree** from Train transitions.
+- You can later modularize candidate/feature logic further into `utils` if needed.
