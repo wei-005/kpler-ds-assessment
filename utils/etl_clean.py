@@ -1,4 +1,3 @@
-
 from .config import DATA_DIR, INTERIM_DIR, PROCESSED_DIR
 import polars as pl
 import math, numpy as np
@@ -73,7 +72,7 @@ def build_samples_taskA(pc: pl.DataFrame = None, trades: pl.DataFrame = None, ve
 
     - is_load / is_discharge
     - prev_dist_km / last_leg_knots_est
-    - product_family_dom（基于 trades 的 origin 聚合）
+    - product_family_dom
     """
     if pc is None or trades is None or vessels is None:
         pc0, tr0, vs0 = load_raw()

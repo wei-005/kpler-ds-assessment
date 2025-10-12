@@ -1,4 +1,3 @@
-
 import polars as pl
 import numpy as np
 import math
@@ -49,7 +48,6 @@ def compute_port_degree(train_trans: pl.DataFrame) -> pl.DataFrame:
 #     return df
 
 def attach_port_side(cands: pl.DataFrame, ports_attr: pl.DataFrame, port_degree: pl.DataFrame) -> pl.DataFrame:
-    # 1️⃣ 先合并起点（origin）信息
     df = cands.join(
         ports_attr.rename({
             "destination": "origin",
@@ -60,7 +58,6 @@ def attach_port_side(cands: pl.DataFrame, ports_attr: pl.DataFrame, port_degree:
         on="origin", how="left"
     )
 
-    # 2️⃣ 再合并候选（candidate）信息
     df = df.join(
         ports_attr.rename({
             "destination": "candidate",
@@ -71,13 +68,11 @@ def attach_port_side(cands: pl.DataFrame, ports_attr: pl.DataFrame, port_degree:
         on="candidate", how="left"
     )
 
-    # 3️⃣ 合并港口网络度量
     df = df.join(
         port_degree.rename({"destination": "candidate"}),
         on="candidate", how="left"
     )
 
-    # 4️⃣ 计算距离 & 区域特征
     pdf = df.select([
         "sample_port_call_id", "origin", "candidate",
         "lat_o", "lon_o", "lat_c", "lon_c", "region_o", "region_c"
@@ -108,12 +103,15 @@ def dwt_bucketize(x):
     return "200k+"
 
 def build_sample_side(samples: pl.DataFrame, pc_clean: pl.DataFrame, vessels: pl.DataFrame) -> pl.DataFrame:
-    # 连接船舶静态属性
+    
+    if samples.schema.get("call_ts") == pl.Utf8:
+        samples = samples.with_columns(pl.col("call_ts").str.strptime(pl.Datetime, strict=False))
+    # Connect ship static properties
     vcols = [c for c in ["id","dead_weight","build_year","vessel_type"] if c in vessels.columns]
     vs = vessels.select(vcols).rename({"id":"vessel_id"})
     s = samples.join(vs, on="vessel_id", how="left")
 
-    # 派生列
+    # Derived columns
     s = s.with_columns([
         pl.col("dead_weight").cast(pl.Float64).map_elements(lambda x: dwt_bucketize(x)).alias("dwt_bucket"),
         pl.when(pl.col("is_load")==True).then(1)
@@ -124,20 +122,22 @@ def build_sample_side(samples: pl.DataFrame, pc_clean: pl.DataFrame, vessels: pl
         pl.col("call_ts").dt.weekday().alias("dow"),
     ])
 
-    # 季节性 sin/cos
+    # Seasonal sin/cos (simplified & vectorized)
     s = s.with_columns([
-        pl.lit(np.pi).alias("_pi")  # helper
-    ]).with_columns([
-        (pl.col("_pi")*2*pl.col("month")/12).alias("_mang"),
-        (pl.col("_pi")*2*pl.col("dow")/7).alias("_dangg"),
-    ]).with_columns([
-        pl.col("_mang").map_elements(lambda a: math.sin(a)).alias("month_sin"),
-        pl.col("_mang").map_elements(lambda a: math.cos(a)).alias("month_cos"),
-        pl.col("_dangg").map_elements(lambda a: math.sin(a)).alias("dow_sin"),
-        pl.col("_dangg").map_elements(lambda a: math.cos(a)).alias("dow_cos"),
-    ]).drop(["_pi","_mang","_dangg"])
+        pl.col("call_ts").dt.month().alias("month"),
+        pl.col("call_ts").dt.weekday().alias("dow"),
+    ])
+    
+    s = s.with_columns([
+        (2 * np.pi * pl.col("month") / 12).sin().alias("month_sin"),
+        (2 * np.pi * pl.col("month") / 12).cos().alias("month_cos"),
+        (2 * np.pi * pl.col("dow") / 7).sin().alias("dow_sin"),
+        (2 * np.pi * pl.col("dow") / 7).cos().alias("dow_cos"),
+    ])
 
-    # 保留下游会用的列（包括 product_family_dom / prev_dist_km / last_leg_knots_est）
+
+
+    # Keep columns that will be used downstream (including product_family_dom / prev_dist_km / last_leg_knots_est)
     keep = [
         "sample_port_call_id","vessel_id","destination","call_ts",
         "is_load","is_discharge","is_laden_after_call",

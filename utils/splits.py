@@ -1,9 +1,7 @@
-
 import polars as pl
 from datetime import datetime
 from .config import PROCESSED_DIR
 
-# 可调整: 时间切分边界（闭区间）
 #Adjustable: temporal split boundaries (closed intervals)
 TRAIN_START = pl.datetime(2023,1,1)
 TRAIN_END   = pl.datetime(2023,9,30,23,59,59)

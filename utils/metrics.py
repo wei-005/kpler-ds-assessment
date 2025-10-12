@@ -1,4 +1,3 @@
-
 def eval_topk_mrr(pred_lists, true_list, ks=(1,3,5)):
     hits = {k:0 for k in ks}
     mrr_sum = 0.0

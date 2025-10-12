@@ -1,6 +1,6 @@
-# Insights summary / 洞察摘要
+# Insights summary / 
 
-## Dataset overview / 数据集概览
+## Dataset overview / 
 
 - Port calls: 347,250
 - Distinct destinations: 2,063
@@ -9,7 +9,7 @@
 - Top-20 busiest ports share: 20.5%; long tail: 79.5%
 
 
-## Voyage patterns / 航程模式
+## Voyage patterns / 
 
 ### Vessel type × distance (top 10)
 
@@ -42,7 +42,7 @@
 | olefins                  |       12 |       4475.36 |
 | ammonia                  |        3 |       6097.29 |
 
-## Anomalies & special events / 异常与特殊事件
+## Anomalies & special events / 
 
 - Trades negative duration: 13
 - Trades zero duration: 392
