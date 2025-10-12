@@ -1,8 +1,8 @@
 
-# Kpler DS — Refactored notebooks & utils (Task‑A focus)
+# Kpler DS case study 
 
 ## What's inside
-- `notebooks/01_...` to `06_...`: end‑to‑end flow; bilingual comments (`# 中文` then `# English`).
+- `notebooks/01_...` to `06_...`: end‑to‑end jupyter noetbook.
 - `utils/`: small library the notebooks import:
   - `config.py`: path config helpers
   - `etl_clean.py`: cleaning + Task‑A samples builder (keeps `is_load/is_discharge`, `prev_dist_km`, `last_leg_knots_est`, `product_family_dom`)
@@ -17,7 +17,5 @@
 3. Run notebooks in order 01 → 06.
 
 ## Notes
-- We focused on **Task A (very next destination)** per assignment.
-- `product_family_dom` is included via trades when building samples in 01.
-- Port network centrality is simplified to **in/out degree** from Train transitions.
-- You can later modularize candidate/feature logic further into `utils` if needed.
+- focused on **Task A (very next destination)** per assignment.
+- we can later modularize logic further into `utils` if needed.
