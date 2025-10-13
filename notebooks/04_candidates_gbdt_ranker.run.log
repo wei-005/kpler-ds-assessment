@@ -1,0 +1,290 @@
+[NbConvertApp] Converting notebook notebooks/04_candidates_gbdt_ranker.ipynb to notebook
+Traceback (most recent call last):
+  File "/Users/wangwei/anaconda3/bin/jupyter-nbconvert", line 11, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/Users/wangwei/anaconda3/lib/python3.11/site-packages/jupyter_core/application.py", line 277, in launch_instance
+    return super().launch_instance(argv=argv, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/wangwei/anaconda3/lib/python3.11/site-packages/traitlets/config/application.py", line 992, in launch_instance
+    app.start()
+  File "/Users/wangwei/anaconda3/lib/python3.11/site-packages/nbconvert/nbconvertapp.py", line 423, in start
+    self.convert_notebooks()
+  File "/Users/wangwei/anaconda3/lib/python3.11/site-packages/nbconvert/nbconvertapp.py", line 597, in convert_notebooks
+    self.convert_single_notebook(notebook_filename)
+  File "/Users/wangwei/anaconda3/lib/python3.11/site-packages/nbconvert/nbconvertapp.py", line 560, in convert_single_notebook
+    output, resources = self.export_single_notebook(
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/wangwei/anaconda3/lib/python3.11/site-packages/nbconvert/nbconvertapp.py", line 488, in export_single_notebook
+    output, resources = self.exporter.from_filename(
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/wangwei/anaconda3/lib/python3.11/site-packages/nbconvert/exporters/exporter.py", line 189, in from_filename
+    return self.from_file(f, resources=resources, **kw)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/wangwei/anaconda3/lib/python3.11/site-packages/nbconvert/exporters/exporter.py", line 206, in from_file
+    return self.from_notebook_node(
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/wangwei/anaconda3/lib/python3.11/site-packages/nbconvert/exporters/notebook.py", line 35, in from_notebook_node
+    nb_copy, resources = super().from_notebook_node(nb, resources, **kw)
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/wangwei/anaconda3/lib/python3.11/site-packages/nbconvert/exporters/exporter.py", line 146, in from_notebook_node
+    nb_copy, resources = self._preprocess(nb_copy, resources)
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/wangwei/anaconda3/lib/python3.11/site-packages/nbconvert/exporters/exporter.py", line 335, in _preprocess
+    nbc, resc = preprocessor(nbc, resc)
+                ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/wangwei/anaconda3/lib/python3.11/site-packages/nbconvert/preprocessors/base.py", line 47, in __call__
+    return self.preprocess(nb, resources)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/wangwei/anaconda3/lib/python3.11/site-packages/nbconvert/preprocessors/execute.py", line 89, in preprocess
+    self.preprocess_cell(cell, resources, index)
+  File "/Users/wangwei/anaconda3/lib/python3.11/site-packages/nbconvert/preprocessors/execute.py", line 110, in preprocess_cell
+    cell = self.execute_cell(cell, index, store_history=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/wangwei/anaconda3/lib/python3.11/site-packages/nbclient/util.py", line 84, in wrapped
+    return just_run(coro(*args, **kwargs))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/wangwei/anaconda3/lib/python3.11/site-packages/nbclient/util.py", line 62, in just_run
+    return loop.run_until_complete(coro)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/wangwei/anaconda3/lib/python3.11/asyncio/base_events.py", line 653, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "/Users/wangwei/anaconda3/lib/python3.11/site-packages/nbclient/client.py", line 965, in async_execute_cell
+    await self._check_raise_for_error(cell, cell_index, exec_reply)
+  File "/Users/wangwei/anaconda3/lib/python3.11/site-packages/nbclient/client.py", line 862, in _check_raise_for_error
+    raise CellExecutionError.from_cell_and_msg(cell, exec_reply_content)
+nbclient.exceptions.CellExecutionError: An error occurred while executing the following cell:
+------------------
+# Group-aware negative downsampling (keep all positives per sample)
+def downsample_groupwise(df: pl.DataFrame, neg_per_pos:int=15, seed:int=42) -> pl.DataFrame:
+    out = []
+    rng = np.random.default_rng(seed)
+    for sid, sub in df.group_by("sample_port_call_id", maintain_order=True):
+        pos = sub.filter(pl.col("y")==1)
+        neg = sub.filter(pl.col("y")==0)
+        if len(pos) == 0:
+            k = min(20, len(neg))
+            if k > 0:
+                keep_idx = rng.choice(len(neg), size=k, replace=False)
+                out.append(neg[keep_idx])
+            continue
+        k = min(len(neg), neg_per_pos * len(pos))
+        if k > 0:
+            keep_idx = rng.choice(len(neg), size=k, replace=False)
+            out.append(pl.concat([pos, neg[keep_idx]]))
+        else:
+            out.append(pos)
+    return pl.concat(out) if out else df.head(0)
+
+train_keep_cols = ["sample_port_call_id","origin","candidate","label","y"]
+
+# Numeric features
+num_cols = [
+    "dist_km","is_same_region","in_cnt","out_cnt","age",
+    "prev_dist_km","last_leg_knots_est",
+    "month_sin","month_cos","dow_sin","dow_cos",
+    "is_crisis_time","dist_x_crisis"
+]
+# extra numeric if available
+cand_cols = (cand_train.columns if 'cand_train' in globals() else (cand_val.columns if 'cand_val' in globals() else (cand_test.columns if 'cand_test' in globals() else [])))
+extra_num = [c for c in [
+    "prior_prob_oc","hist_cnt_oc","prior_prob_oc_vtype","prior_prob_oc_dwt",
+    "prior_prob_oc_laden","prior_prob_oc_pf",
+    "geo_rank_in_sample","log_dist_km","cand_is_waypoint",
+    "in_cnt_cand","out_cnt_cand"
+] if c in cand_cols]
+num_cols = num_cols + extra_num
+
+# Categorical features
+cat_cols = [c for c in ["origin","candidate","vessel_type","dwt_bucket","product_family_dom"] if c in cand_cols]
+
+# Build unique keep cols and backfill missing columns across splits
+keep_cols = list(dict.fromkeys(train_keep_cols + num_cols + cat_cols))
+def ensure_cols(df: pl.DataFrame, cols):
+    for c in cols:
+        if c not in df.columns:
+            df = df.with_columns((pl.lit(0.0) if c in num_cols else pl.lit("unk")).alias(c))
+    return df
+
+if 'cand_train' in globals():
+    cand_train = ensure_cols(cand_train, keep_cols)
+if 'cand_val' in globals():
+    cand_val   = ensure_cols(cand_val,   keep_cols)
+if 'cand_test' in globals():
+    cand_test  = ensure_cols(cand_test,  keep_cols)
+
+# Materialize filtered frames and unique per (sample, candidate)
+cand_train_u = cand_train.select(keep_cols).unique(subset=["sample_port_call_id","candidate"])
+cand_val_u   = cand_val.select(keep_cols).unique(subset=["sample_port_call_id","candidate"])
+cand_test_u  = cand_test.select(keep_cols).unique(subset=["sample_port_call_id","candidate"])
+
+# Memory guard: subsample validation/test for demonstration
+def subsample(df: pl.DataFrame, n:int=100_000, seed:int=42) -> pl.DataFrame:
+    return df if len(df) <= n else df.sample(n=n, seed=seed)
+cand_val_u  = subsample(cand_val_u,  n=100_000)
+cand_test_u = subsample(cand_test_u, n=100_000)
+
+# Optional pre-sample training set to control memory (similar to 03)
+if len(cand_train_u) > 700_000:
+    cand_train_u = cand_train_u.sample(n=700_000, seed=42)
+cand_train_ds = downsample_groupwise(cand_train_u, neg_per_pos=12, seed=42)
+
+print("Train (unique):", cand_train_u.shape, " -> Downsampled:", cand_train_ds.shape)
+print("Val   (unique):", cand_val_u.shape)
+print("Test  (unique):", cand_test_u.shape)
+
+# Disable LightGBM in this run to avoid heavy memory/OMP issues; use logistic fallback
+use_lgbm = False
+print("LightGBM disabled for this run; using logistic fallback.")
+
+def prep_for_lgb(df_pl: pl.DataFrame):
+    df_pd = df_pl.select(keep_cols).to_pandas()
+    for c in cat_cols:
+        df_pd[c] = df_pd[c].astype("category")
+    for c in num_cols:
+        if c in df_pd.columns:
+            df_pd[c] = pd.to_numeric(df_pd[c], errors="coerce").replace([np.inf, -np.inf], np.nan)
+    X = df_pd[num_cols + cat_cols]
+    y = df_pd["y"].astype(int).values
+    group_sizes = df_pd.groupby("sample_port_call_id")["candidate"].size().values.tolist()
+    meta = df_pd[["sample_port_call_id","origin","candidate","label"]]
+    return X, y, group_sizes, meta
+
+if use_lgbm:
+    Xtr, ytr, gtr, mtr = prep_for_lgb(cand_train_ds)
+    Xva, yva, gva, mva = prep_for_lgb(cand_val_u)
+    Xte, yte, gte, mte = prep_for_lgb(cand_test_u)
+
+    ranker = lgb.LGBMRanker(
+        objective="lambdarank",
+        metric="map",
+        learning_rate=0.05,
+        n_estimators=800,
+        num_leaves=63,
+        max_depth=-1,
+        subsample=0.8,
+        colsample_bytree=0.8,
+        random_state=42,
+        n_jobs=-1
+    )
+    ranker.fit(
+        Xtr, ytr, group=gtr,
+        eval_set=[(Xva, yva)],
+        eval_group=[gva],
+        eval_at=[1,3,5],
+        categorical_feature=cat_cols,
+        callbacks=[
+            lgb.early_stopping(stopping_rounds=150, verbose=False),
+            lgb.log_evaluation(50)
+        ]
+    )
+
+    def rank_predict_ranker(model, X, meta):
+        s = model.predict(X, num_iteration=model.best_iteration_)
+        meta2 = meta.copy()
+        meta2["score"] = s
+        preds, truth = [], []
+        for sid, g in meta2.groupby("sample_port_call_id"):
+            g2 = g.sort_values("score", ascending=False)
+            preds.append(g2["candidate"].tolist())
+            truth.append(g2["label"].iloc[0])
+        return preds, truth
+
+    preds_val, truth_val = rank_predict_ranker(ranker, Xva, mva)
+    preds_te,  truth_te  = rank_predict_ranker(ranker, Xte, mte)
+
+    m_val  = eval_topk_mrr([p[:5] for p in preds_val], truth_val, ks=(1,3,5))
+    m_test = eval_topk_mrr([p[:5] for p in preds_te],  truth_te,  ks=(1,3,5))
+
+    print("VAL:",  m_val)
+    print("TEST:", m_test)
+
+    # Save model
+    outm = PROCESSED_DIR / "model_taskA_lgbm_ranker.txt"
+    ranker.booster_.save_model(outm)
+    with open(PROCESSED_DIR / "metrics_gbdt.json", "w") as f:
+        json.dump({"val": m_val, "test": m_test}, f, indent=2)
+    print("Saved model:", outm)
+
+else:
+    def to_xy(df_pl: pl.DataFrame):
+        df2 = df_pl.select(keep_cols).unique(subset=["sample_port_call_id","candidate"])
+        pdf = df2.to_pandas()
+        X = pdf[num_cols + cat_cols]
+        y = pdf["y"].astype(int).values
+        meta = pdf[["sample_port_call_id","origin","candidate","label"]]
+        return X, y, meta
+
+    Xtr, ytr, mtr = to_xy(cand_train_ds)
+    Xva, yva, mva = to_xy(cand_val_u)
+    Xte, yte, mte = to_xy(cand_test_u)
+
+    numeric = Pipeline([("imp", SimpleImputer(strategy="median")),
+                        ("std", StandardScaler())])
+    preproc = ColumnTransformer(
+        transformers=[("num", numeric, num_cols),
+                      ("cat", OneHotEncoder(handle_unknown="ignore", sparse=True), cat_cols)],
+        remainder="drop"
+    )
+
+    clf = LogisticRegression(max_iter=200, solver="saga", n_jobs=-1, verbose=0)
+    pipe = Pipeline([("prep", preproc), ("clf", clf)])
+    pipe.fit(Xtr, ytr)
+
+    def rank_predict_clf(pipe, X, meta):
+        if hasattr(pipe.named_steps['clf'], 'predict_proba'):
+            proba = pipe.predict_proba(X)[:, 1]
+        else:
+            proba = pipe.decision_function(X)
+        meta2 = meta.copy()
+        meta2["score"] = proba
+        preds, truth = [], []
+        for sid, g in meta2.groupby("sample_port_call_id"):
+            g2 = g.sort_values("score", ascending=False)
+            preds.append(g2["candidate"].tolist())
+            truth.append(g2["label"].iloc[0])
+        return preds, truth
+
+    preds_val, truth_val = rank_predict_clf(pipe, Xva, mva)
+    preds_te,  truth_te  = rank_predict_clf(pipe, Xte, mte)
+
+    m_val  = eval_topk_mrr([p[:5] for p in preds_val], truth_val, ks=(1,3,5))
+    m_test = eval_topk_mrr([p[:5] for p in preds_te],  truth_te,  ks=(1,3,5))
+
+    print("VAL:",  m_val)
+    print("TEST:", m_test)
+
+    outm = PROCESSED_DIR / "model_taskA_hgb_ranker.joblib"
+    joblib.dump(pipe, outm)
+    with open(PROCESSED_DIR / "metrics_gbdt.json", "w") as f:
+        json.dump({"val": m_val, "test": m_test}, f, indent=2)
+    print("Saved model:", outm)
+
+# Dump Top‑5
+def dump_topk(meta, preds, split_name, k=5):
+    rows = []
+    # meta can be pandas DataFrame from prep
+    sids = meta["sample_port_call_id"].unique()
+    for sid, plist in zip(sids, preds):
+        rows.append({"sample_port_call_id": sid, "pred_topk": plist[:k]})
+    outp = PROCESSED_DIR / f"rank_top{str(k)}_{split_name}.parquet"
+    pl.DataFrame(rows).write_parquet(outp)
+    print("Saved:", outp)
+
+dump_topk(mva, preds_val, "val", k=5)
+dump_topk(mte, preds_te,  "test", k=5)
+------------------
+
+[0;31m---------------------------------------------------------------------------[0m
+[0;31mNameError[0m                                 Traceback (most recent call last)
+Cell [0;32mIn[6], line 60[0m
+[1;32m     57[0m     cand_test  [38;5;241m=[39m ensure_cols(cand_test,  keep_cols)
+[1;32m     59[0m [38;5;66;03m# Materialize filtered frames and unique per (sample, candidate)[39;00m
+[0;32m---> 60[0m cand_train_u [38;5;241m=[39m [43mcand_train[49m[38;5;241m.[39mselect(keep_cols)[38;5;241m.[39munique(subset[38;5;241m=[39m[[38;5;124m"[39m[38;5;124msample_port_call_id[39m[38;5;124m"[39m,[38;5;124m"[39m[38;5;124mcandidate[39m[38;5;124m"[39m])
+[1;32m     61[0m cand_val_u   [38;5;241m=[39m cand_val[38;5;241m.[39mselect(keep_cols)[38;5;241m.[39munique(subset[38;5;241m=[39m[[38;5;124m"[39m[38;5;124msample_port_call_id[39m[38;5;124m"[39m,[38;5;124m"[39m[38;5;124mcandidate[39m[38;5;124m"[39m])
+[1;32m     62[0m cand_test_u  [38;5;241m=[39m cand_test[38;5;241m.[39mselect(keep_cols)[38;5;241m.[39munique(subset[38;5;241m=[39m[[38;5;124m"[39m[38;5;124msample_port_call_id[39m[38;5;124m"[39m,[38;5;124m"[39m[38;5;124mcandidate[39m[38;5;124m"[39m])
+
+[0;31mNameError[0m: name 'cand_train' is not defined
+NameError: name 'cand_train' is not defined
+

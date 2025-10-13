@@ -69,7 +69,8 @@ def compute_port_degree(train_trans: pl.DataFrame) -> pl.DataFrame:
 
 def attach_port_side(cands: pl.DataFrame,
                      ports_attr: pl.DataFrame,
-                     port_degree: pl.DataFrame) -> pl.DataFrame:
+                     port_degree: pl.DataFrame,
+                     compute_distance: bool = True) -> pl.DataFrame:
     """
     Join port attributes for origin/candidate without creating duplicate 'origin'/'candidate' columns.
     NOTE: use left_on/right_on instead of renaming 'destination' to 'origin'.
@@ -87,22 +88,19 @@ def attach_port_side(cands: pl.DataFrame,
     # degree on candidate
     df = df.join(port_degree, left_on="candidate", right_on="destination", how="left")
 
-    # compute distance & same-region
-    pdf = df.select([
-        "sample_port_call_id", "origin", "candidate",
-        "lat_o", "lon_o", "lat_c", "lon_c", "region_o", "region_c"
-    ]).to_pandas()
+    # same-region can be computed cheaply in polars
+    df = df.with_columns((pl.col("region_o") == pl.col("region_c")).cast(pl.Int8).alias("is_same_region"))
 
+    if not compute_distance:
+        # skip heavy haversine; leave dist_km as null to reduce cost
+        return df
+
+    # compute distance via pandas apply (heavier)
+    pdf = df.select(["sample_port_call_id", "lat_o", "lon_o", "lat_c", "lon_c"]).to_pandas()
     def hv(r):
         return _haversine_km(r["lat_o"], r["lon_o"], r["lat_c"], r["lon_c"])
-
     pdf["dist_km"] = pdf.apply(hv, axis=1)
-    pdf["is_same_region"] = (pdf["region_o"] == pdf["region_c"]).astype(int)
-
-    df = df.join(
-        pl.from_pandas(pdf[["sample_port_call_id","dist_km","is_same_region"]]),
-        on="sample_port_call_id", how="left"
-    )
+    df = df.join(pl.from_pandas(pdf[["sample_port_call_id","dist_km"]]), on="sample_port_call_id", how="left")
     return df
 
 # ---------- sample-side features ----------
@@ -168,7 +166,8 @@ def merge_all_features(cands_df: pl.DataFrame,
         on="sample_port_call_id", how="left"
     )
     df = df.join(sample_side, on="sample_port_call_id", how="left")
-    df = df.with_columns(
-        (pl.col("dist_km") * pl.col("is_crisis_time").cast(pl.Int8)).alias("dist_x_crisis")
-    )
+    # ensure dist_km exists (could be skipped to reduce cost)
+    if "dist_km" not in df.columns:
+        df = df.with_columns(pl.lit(0.0).alias("dist_km"))
+    df = df.with_columns((pl.col("dist_km") * pl.col("is_crisis_time").cast(pl.Int8)).alias("dist_x_crisis"))
     return df

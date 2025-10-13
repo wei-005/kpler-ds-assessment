@@ -1,0 +1,5 @@
+data/processed/*.parquet
+*.icloud
+data/processed/*.parquet
+data/processed/figures/*.html
+*.icloud
