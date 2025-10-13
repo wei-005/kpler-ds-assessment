@@ -3,3 +3,8 @@ data/processed/*.parquet
 data/processed/*.parquet
 data/processed/figures/*.html
 *.icloud
+notebooks/.ipynb_checkpoints/
+*.icloud
+data/raw/*.csv # 如果原始 csv 不想跟踪的话
+notebooks/.ipynb_checkpoints/
+*.icloud
